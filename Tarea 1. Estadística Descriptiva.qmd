@@ -1,0 +1,1318 @@
+---
+title: "1. Estadística Descriptiva. Gráficas Variables Cuantitativas."
+author: "Heidi Idali Pacheco Almaraz"
+format: 
+  html:
+    grid: 
+      body-width: 950px
+editor: visual
+lang: es
+---
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(sf)          # Para datos espaciales
+library(viridis)     # Para paletas de colores
+library(janitor)    # Para limpiar nombres de columnas
+library(scales)     # Para mejorar ejes en gráficos
+```
+
+# Datos espaciales de Nuevo León
+
+```{r municipios}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+municipios_nuevoleon<- st_read("C:/Users/kelip/OneDrive/Documentos/ESTADISTICA APLICADA/Nuevo León/data/19mun.shp", options = "ENCODING=LATIN1", quiet = TRUE)
+
+mapa_municipios <- ggplot(municipios_nuevoleon) +
+  geom_sf(fill = "purple", color = "darkblue", size = 0.3) +
+  labs(
+    title = "Municipios de Nuevo León",
+    subtitle = paste("Total de municipios:", nrow(municipios_nuevoleon)),
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+
+print(mapa_municipios)
+```
+
+# Lectura de datos
+
+Carguemos los datos de población y vivienda para el año 2020, filtrando por algunos indicadores relevantes:
+
+-   Relación hombres-mujeres
+-   Relación de dependencia
+-   Total de viviendas particulares habitadas
+-   Porcentaje de viviendas particulares habitadas con disponibilidad de excusado
+-   Porcentaje de viviendas con techos de materiales resistentes
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+datos_total <- read_csv("C:/Users/kelip/OneDrive/Documentos/ESTADISTICA APLICADA/Nuevo León/data/cpv_valor_19.csv", na = c("ND"))
+
+datos_total <- datos_total |> filter(año == 2020)
+#unique(datos_total$indicador)
+datos_seleccion <- datos_total |> 
+  filter(indicador %in% c("Relación hombres-mujeres", "Relación de dependencia", "Total de viviendas particulares habitadas", "Porcentaje de viviendas particulares habitadas con disponibilidad de excusado", "Porcentaje de viviendas con techos de materiales resistentes"), desc_municipio != "Estatal") |> 
+  select(desc_municipio, indicador, valor)
+```
+
+Cambiamos el formato de los datos para que cada indicador sea una columna separada, facilitando el análisis posterior. Además, limpiamos los nombres de las columnas para que sean más manejables y creamos una columna `NOMGEO` para poder unir los datos espaciales con los datos de población y vivienda.
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+datos <- datos_seleccion |>
+    pivot_wider(names_from = indicador, values_from = valor) 
+
+datos <- datos |> 
+  clean_names() 
+
+# Corrección de nombres de municipios
+
+datos <- datos |> 
+  mutate(desc_municipio = if_else(desc_municipio == "EL Arenal", "El Arenal", desc_municipio))
+
+datos <- datos |> 
+  mutate(NOMGEO = desc_municipio)
+```
+
+# Estadísticas descriptivas
+
+```{r}
+#| code-fold: true
+
+summary(datos)
+```
+
+```{r}
+#| code-fold: true
+
+datos <- left_join(municipios_nuevoleon, datos)
+```
+
+# Relación hombres-mujeres
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = relacion_hombres_mujeres), color = "darkblue", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Relación Hombres-Mujeres"
+  ) +
+  labs(
+    title = "Relación Hombres-Mujeres de los Municipios de Nuevo León",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(relacion_hombres_mujeres), color="darkblue", fill = "purple", boundary=min(datos$relacion_hombres_mujeres), binwidth = 2) +
+  labs(
+    title = "Distribución de la Relación Hombres-Mujeres",
+    x = "Relación Hombres-Mujeres", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Gráfica de Densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(relacion_hombres_mujeres), color="darkblue", fill = "purple", alpha=0.6) +
+  labs(
+    title = "Distribución de la Relación Hombres-Mujeres",
+    x = "Relación Hombres-Mujeres", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = relacion_hombres_mujeres)) +
+    geom_boxplot(
+    fill = "purple",           # Color de relleno
+    color = "darkblue",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#E74C3C",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "blue", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "")) +
+  labs(title = "Distribución de la Relación Hombres-Mujeres", 
+  subtitle = "Población del Estado de Nuevo León",
+  y = "Relación Hombres-Mujeres",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Gráfico de Violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = relacion_hombres_mujeres)) +
+    geom_violin(fill = "purple", color = "darkblue", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "darkblue", alpha = 0.9,
+    outlier.color = "#E74C3C", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "#2C5F7A", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#34495E", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "H/M")) +
+  labs(title = "Distribución de la Relación Hombres-Mujeres", 
+  subtitle = "Población del Estado de Nuevo León",
+  y = "Relación Hombres-Mujeres",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = relacion_hombres_mujeres)) +
+    stat_qq(color = "purple", size = 2, alpha = 0.7) +
+    stat_qq_line(color = "blue", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (Relación Hombres-Mujeres)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "H/M")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Relación Hombres-Mujeres - Población Nuevo León") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = relacion_hombres_mujeres, y = reorder(NOMGEO, relacion_hombres_mujeres))) +
+  geom_point(color = "purple", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = relacion_hombres_mujeres, y = NOMGEO, yend = NOMGEO),
+    color = "blue", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "Relación Hombres-Mujeres",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - Relación Hombres-Mujeres por Municipio",
+    subtitle = "Estado de Nuevo León") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+# Relación de dependencia
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = relacion_de_dependencia), color = "darkblue", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Relación de Dependencia"
+  ) +
+  labs(
+    title = "Relación de Dependencia de los Municipios de Nuevo León",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(relacion_de_dependencia), color="darkblue", fill = "purple", boundary=min(datos$relacion_de_dependencia), binwidth = 2) +
+  labs(
+    title = "Distribución de la Relación de Dependencia",
+    x = "Relación de Dependencia", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Gráfica de Densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(relacion_de_dependencia), color="darkblue", fill = "purple", alpha=0.6) +
+  labs(
+    title = "Distribución de la Relación de Dependencia",
+    x = "Relación de Dependencia", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = relacion_de_dependencia)) +
+    geom_boxplot(
+    fill = "purple",           # Color de relleno
+    color = "darkblue",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#E74C3C",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "blue", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "")) +
+  labs(title = "Distribución de la Relación de Dependencia", 
+  subtitle = "Población del Estado de Nuevo León",
+  y = "Relación de Dependencia",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Gráfico de Violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = relacion_de_dependencia)) +
+    geom_violin(fill = "purple", color = "darkblue", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "darkblue", alpha = 0.9,
+    outlier.color = "#E74C3C", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "#2C5F7A", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#34495E", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "%")) +
+  labs(title = "Distribución de la Relación de Dependencia", 
+  subtitle = "Población del Estado de Nuevo León",
+  y = "Relación de Dependencia",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = relacion_de_dependencia)) +
+    stat_qq(color = "purple", size = 2, alpha = 0.7) +
+    stat_qq_line(color = "blue", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (Relación de Dependencia)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "%")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Relación de Dependencia - Población Nuevo León") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = relacion_de_dependencia, y = reorder(NOMGEO, relacion_de_dependencia))) +
+  geom_point(color = "purple", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = relacion_de_dependencia, y = NOMGEO, yend = NOMGEO),
+    color = "blue", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "Relación de Dependencia",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - Relación de Dependencia por Municipio",
+    subtitle = "Estado de Nuevo León") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+# Total de viviendas particulares habitadas
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = total_de_viviendas_particulares_habitadas), color = "darkblue", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Total de Viviendas Particulares Habitadas"
+  ) +
+  labs(
+    title = "Total de Viviendas Particulares Habitadas de los Municipios de Nuevo León",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.2),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(total_de_viviendas_particulares_habitadas), color="darkblue", fill = "purple", boundary=min(datos$total_de_viviendas_particulares_habitadas), binwidth = 2) +
+  labs(
+    title = "Distribución del Total de Viviendas Particulares Habitadas",
+    x = "Total de Viviendas Particulares Habitadas", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Gráfica de Densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(total_de_viviendas_particulares_habitadas), color="darkblue", fill = "purple", alpha=0.6) +
+  labs(
+    title = "Distribución del Total de Viviendas Particulares Habitadas",
+    x = "Total de Viviendas Particulares Habitadas", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = total_de_viviendas_particulares_habitadas)) +
+    geom_boxplot(
+    fill = "purple",           # Color de relleno
+    color = "darkblue",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#E74C3C",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = FALSE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "blue", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "")) +
+  labs(title = "Distribución del Total de Viviendas Particulares Habitadas", 
+  subtitle = "Viviendas del Estado de Nuevo León",
+  y = "Total de Viviendas Particulares Habitadas",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Gráfico de Violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = total_de_viviendas_particulares_habitadas)) +
+    geom_violin(fill = "purple", color = "darkblue", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "darkblue", alpha = 0.9,
+    outlier.color = "#E74C3C", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "#2C5F7A", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#34495E", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "Viviendas")) +
+  labs(title = "Distribución del Total de Viviendas Particulares Habitadas", 
+  subtitle = "Viviendas del Estado de Nuevo León",
+  y = "Total de Viviendas Particulares Habitadas",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=12, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = total_de_viviendas_particulares_habitadas)) +
+    stat_qq(color = "purple", size = 2, alpha = 0.7) +
+    stat_qq_line(color = "blue", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (Total de Viviendas Particulares Habitadas)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "Viviendas")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Total de Viviendas Particulares Habitadas - Población Nuevo León") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=12),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=10),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = total_de_viviendas_particulares_habitadas, y = reorder(NOMGEO, total_de_viviendas_particulares_habitadas))) +
+  geom_point(color = "purple", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = total_de_viviendas_particulares_habitadas, y = NOMGEO, yend = NOMGEO),
+    color = "blue", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "Total de Viviendas Particulares Habitadas",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - Total de Viviendas Particulares Habitadas por Municipio",
+    subtitle = "Estado de Nuevo León") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=12, face="bold"),
+    plot.subtitle = element_text(size=10),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+# Porcentaje de viviendas particulares habitadas con disponibilidad de excusado
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado), color = "darkblue", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "% Disponibilidad de excusado"
+  ) +
+  labs(
+    title = "Porcentaje de viviendas particulares habitadas con disponibilidad de excusado de los Municipios de Nuevo León",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 10, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado), color="darkblue", fill = "purple", boundary=min(datos$porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado), binwidth = 2) +
+  labs(
+    title = "Distribución del Porcentaje de viviendas particulares habitadas con disponibilidad de excusado",
+    x = "% de viviendas particulares habitadas con disponibilidad de excusado", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=8, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=10),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Gráfica de Densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado), color="darkblue", fill = "purple", alpha=0.6) +
+  labs(
+    title = "Distribución del Porcentaje de viviendas particulares habitadas con disponibilidad de excusado",
+    x = "Porcentaje de viviendas particulares habitadas con disponibilidad de excusado", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=8, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=9),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado)) +
+    geom_boxplot(
+    fill = "purple",           # Color de relleno
+    color = "darkblue",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#E74C3C",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "blue", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "")) +
+  labs(title = "Distribución del Porcentaje de viviendas particulares habitadas con disponibilidad de excusado", 
+  subtitle = "Viviendas del Estado de Nuevo León",
+  y = "% de viviendas particulares habitadas con disponibilidad de excusado",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=8, face="bold"),
+    plot.subtitle = element_text(size=8),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=8),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Gráfico de Violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado)) +
+    geom_violin(fill = "purple", color = "darkblue", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "darkblue", alpha = 0.9,
+    outlier.color = "#E74C3C", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "#2C5F7A", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#34495E", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "%")) +
+  labs(title = "Distribución del Porcentaje de viviendas particulares habitadas con disponibilidad de excusado", 
+  subtitle = "Viviendas del Estado de Nuevo León",
+  y = "% de viviendas particulares habitadas con disponibilidad de excusado",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=9, face="bold"),
+    plot.subtitle = element_text(size=8),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=8),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado)) +
+    stat_qq(color = "#4A90E2", size = 2, alpha = 0.7) +
+    stat_qq_line(color = "#E74C3C", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (% de Viviendas Particulares Habitadas con Disponibilidad de Excusado)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "%")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "% de viviendas particulares habitadas con disponibilidad de excusado - Nuevo León") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=10),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=6),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado, y = reorder(NOMGEO, porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado))) +
+  geom_point(color = "purple", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = porcentaje_de_viviendas_particulares_habitadas_con_disponibilidad_de_excusado, y = NOMGEO, yend = NOMGEO),
+    color = "blue", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "% de viviendas particulares habitadas con disponibilidad de excusado",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - % de viviendas particulares habitadas con disponibilidad de excusado por Municipio",
+    subtitle = "Estado de Nuevo León") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=7.5, face="bold"),
+    plot.subtitle = element_text(size=8),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=8),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+# Porcentaje de viviendas con techos de materiales resistentes
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = porcentaje_de_viviendas_con_techos_de_materiales_resistentes), color = "darkblue", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "% de viviendas con techos de materiales resistentes"
+  ) +
+  labs(
+    title = "% de viviendas con techos de materiales resistentes de los Municipios de Nuevo León",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 12, face = "bold", hjust = 0.1),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Histograma
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_histogram(aes(porcentaje_de_viviendas_con_techos_de_materiales_resistentes), color="darkblue", fill = "purple", boundary=min(datos$porcentaje_de_viviendas_con_techos_de_materiales_resistentes), binwidth = 2) +
+  labs(
+    title = "Distribución del % de viviendas con techos de materiales resistentes",
+    x = "% de viviendas con techos de materiales resistentes", y = "Frecuencia"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=12, face="bold"),
+    plot.subtitle = element_text(size=10),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Gráfica de Densidad
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(datos) +
+  geom_density(aes(porcentaje_de_viviendas_con_techos_de_materiales_resistentes), color="darkblue", fill = "purple", alpha=0.6) +
+  labs(
+    title = "Distribución del % de viviendas con techos de materiales resistentes",
+    x = "% de viviendas con techos de materiales resistentes", y = "Densidad"
+  ) +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=12, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13)
+  )
+```
+
+## Boxplot
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_viviendas_con_techos_de_materiales_resistentes)) +
+    geom_boxplot(
+    fill = "purple",           # Color de relleno
+    color = "darkblue",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#E74C3C",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "blue", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "")) +
+  labs(title = "Distribución del % de viviendas con techos de materiales resistentes", 
+  subtitle = "Viviendas del Estado de Nuevo León",
+  y = "% de viviendas con techos de materiales resistentes",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=13, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=10),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Gráfico de Violín
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos, aes(x = "", y = porcentaje_de_viviendas_con_techos_de_materiales_resistentes)) +
+    geom_violin(fill = "purple", color = "darkblue", alpha = 0.8,
+    trim = FALSE,               # No recortar las colas
+    scale = "width", width = 0.8, linewidth = 0.8) +
+    geom_boxplot( width = 0.15, fill = "white", color = "darkblue", alpha = 0.9,
+    outlier.color = "#E74C3C", outlier.size = 1.5, outlier.alpha = 0.8, notch = FALSE) +
+  stat_summary(fun = median, geom = "point", shape = 21, size = 3, fill = "white",
+  color = "#2C5F7A", stroke = 1.5) +
+  geom_jitter(alpha = 0.2, color = "#34495E", size = 0.8, width = 0.05) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "%")) +
+  labs(title = "Distribución del % de viviendas con techos de materiales resistentes", 
+  subtitle = "Viviendas del Estado de Nuevo León",
+  y = "% de viviendas con techos de materiales resistentes",
+  x = "")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=13, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=10),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Q-Q Plot (comparación de cuantiles)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+
+# Q-Q Plot básico para normalidad
+ggplot(data = datos, aes(sample = porcentaje_de_viviendas_con_techos_de_materiales_resistentes)) +
+    stat_qq(color = "purple", size = 2, alpha = 0.7) +
+    stat_qq_line(color = "blue", linewidth = 1, linetype = "dashed") +
+    scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+    breaks = pretty_breaks(n = 6)) +
+    scale_y_continuous(name = "Cuantiles Muestrales (% de viviendas con techos de materiales resistentes)",
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste(x, "%")) +
+    labs(title = "Gráfico Q-Q para Normalidad",
+    subtitle = "Porcentaje de viviendas con techos de materiales resistentes - Nuevo León") +
+    theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=8),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Dot Plot (Gráfico de puntos)
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-height: 16
+#| fig-align: center
+
+ggplot(data = datos, aes(x = porcentaje_de_viviendas_con_techos_de_materiales_resistentes, y = reorder(NOMGEO, porcentaje_de_viviendas_con_techos_de_materiales_resistentes))) +
+  geom_point(color = "purple", size = 3, alpha = 0.8) +
+  geom_segment(aes(x = 0, xend = porcentaje_de_viviendas_con_techos_de_materiales_resistentes, y = NOMGEO, yend = NOMGEO),
+    color = "blue", size = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    name = "% de viviendas con techos de materiales resistentes",
+    breaks = pretty_breaks(n = 6),
+    expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(
+    name = "Municipios",
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Dot Plot - % de viviendas con techos de materiales resistentes",
+    subtitle = "Estado de Nuevo León") +
+  theme_bw()+
+    theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=12, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=9),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```

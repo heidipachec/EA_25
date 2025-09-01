@@ -1,0 +1,194 @@
+---
+title: "1.1 Datos Espaciales"
+author: "Heidi Idali Pacheco Almaraz"
+format: 
+  html:
+    grid: 
+      body-width: 950px
+editor: visual
+---
+
+Primero, carguemos las librerías necesarias:
+
+```{r setup}
+#| warning: false
+#| message: false
+#| code-fold: true
+
+# Cargar librerías
+library(tidyverse)    # Para manipulación de datos
+library(sf)          # Para datos espaciales
+library(viridis)     # Para paletas de colores
+
+# Configurar tema para los mapas
+theme_set(theme_minimal())
+```
+
+## Lectura de datos espaciales
+
+### Cargando los límites estatales
+
+Primero, leemos el archivo shapefile para Nuevo León:
+
+```{r entidades}
+#| code-fold: true
+
+nuevoleon_estado <- st_read("C:/Users/kelip/OneDrive/Documentos/ESTADISTICA APLICADA/Nuevo León/data/19ent.shp", options = "ENCODING=LATIN1", quiet = TRUE)
+```
+
+### Visualización del estado de Nuevo León
+
+```{r mapa_nuevoleon_estado}
+#| code-fold: true
+
+# Crear mapa básico de Jalisco
+mapa_nuevoleon <- ggplot(nuevoleon_estado) +
+  geom_sf(fill = "purple", color = "darkblue", size = 0.8) +
+  labs(
+    title = "Estado de Nuevo León",
+    subtitle = "Límites estatales",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+
+print(mapa_nuevoleon)
+```
+
+## Trabajando con límites municipales
+
+### Cargando los datos municipales
+
+Ahora carguemos los límites municipales:
+
+```{r municipios}
+#| code-fold: true
+
+municipios_nuevoleon <- st_read("C:/Users/kelip/OneDrive/Documentos/ESTADISTICA APLICADA/Nuevo León/data/19mun.shp", options = "ENCODING=LATIN1", quiet = TRUE)
+
+# Explorar los datos
+cat("Número de municipios en Nuevo León:", nrow(municipios_nuevoleon), "\n")
+cat("Primeros 10 municipios:\n")
+print(municipios_nuevoleon$NOMGEO[1:10])
+```
+
+### Visualización de municipios
+
+```{r mapa_municipios}
+#| code-fold: true
+
+# Crear mapa de municipios de Jalisco
+mapa_municipios <- ggplot(municipios_nuevoleon) +
+  geom_sf(fill = "purple", color = "darkblue", size = 0.3) +
+  labs(
+    title = "Municipios de Nuevo León",
+    subtitle = paste("Total de municipios:", nrow(municipios_nuevoleon)),
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+
+print(mapa_municipios)
+```
+
+### Destacando algunos municipios importantes
+
+```{r municipios_importantes}
+#| code-fold: true
+
+# Identificar algunos municipios importantes
+municipios_importantes <- c("San Pedro Garza García", "Monterrey", "Apodaca", 
+                          "Santa Catarina", "San Nicolás de los Garza", "Guadalupe")
+
+# Crear una variable para destacar estos municipios
+municipios_nuevoleon <- municipios_nuevoleon %>%
+  mutate(
+    importante = case_when(
+      NOMGEO %in% municipios_importantes ~ "Importante",
+      TRUE ~ "Otros"
+    )
+  )
+
+# Crear mapa destacando municipios importantes
+mapa_destacados <- ggplot(municipios_nuevoleon) +
+  geom_sf(aes(fill = importante), color = "darkblue", size = 0.2) +
+  scale_fill_manual(
+    values = c("Importante" = "purple", "Otros" = "yellow"),
+    name = "Clasificación"
+  ) +
+  labs(
+    title = "Municipios Importantes de Nuevo León",
+    subtitle = "Se destacan algunos municipios principales",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "bottom"
+  )
+
+print(mapa_destacados)
+```
+
+## Análisis espacial básico
+
+### Calculando áreas
+
+```{r areas}
+#| code-fold: true
+
+# Calcular área de cada municipio (en km²)
+municipios_nuevoleon <- municipios_nuevoleon %>%
+  mutate(area_km2 = as.numeric(st_area(.)) / 1e6)  # Convertir m² a km²
+
+# Los 10 municipios más grandes
+municipios_grandes <- municipios_nuevoleon |> 
+  st_drop_geometry() |> 
+  arrange(desc(area_km2)) |> 
+  select(NOMGEO, area_km2) |> 
+  head(10)
+
+print("Los 10 municipios más grandes de Jalisco:")
+knitr::kable(municipios_grandes, 
+             col.names = c("Municipio", "Área (km²)"),
+             digits = 2)
+```
+
+### Mapa de áreas
+
+```{r mapa_areas}
+#| code-fold: true
+
+# Crear mapa coloreado por área
+mapa_areas <- ggplot(municipios_nuevoleon) +
+  geom_sf(aes(fill = area_km2), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Área\n(km²)",
+    trans = "log10",
+    labels = scales::comma_format()
+  ) +
+  labs(
+    title = "Área de los Municipios de Nuevo León",
+    subtitle = "Coloreado por área en escala logarítmica",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+
+print(mapa_areas)
+```
