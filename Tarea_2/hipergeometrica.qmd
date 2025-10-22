@@ -1,0 +1,200 @@
+---
+title: "Distribución Hipergeométrica"
+lang: es
+---
+
+```{=html}
+<style>
+main.content {
+text-align: justify}
+</style>
+```
+
+```{r}
+#| label: setup
+#| include: false
+#| code-fold: true
+
+library(tidyverse)
+library(kableExtra)
+library(gridExtra)
+```
+
+La **distribución hipergeométrica** es un modelo de probabilidad discreta que surge en el contexto de la toma de una muestra de un conjunto de objetos de dos tipos. 
+
+:::::::: {#def-hipergeométrica}
+
+Sea un conjunto de objetos de tamaño $N$ que contienen $K$ objetos que son de un primer tipo y $N-K$ que son de un segundo tipo. Si se selecciona al azar y sin reemplazo una muestra de tamaño $n$, la variable aleatoria $X$ toma el valor de $n$ si y sólo si todos los objetos seleccionados son del primer tipo. De lo contrario, toma el valor de 0. De tal manera que el tamaño $n$ de la muestra es lo suficientemente pequeño tal que: 
+
+$$
+n\le\min{K,N-K}
+$$
+
+Entonces, la variable aleatoria $x$ sigue una distribución hipergeométrica con parámetros $N$, $K$ y $n$, y su función de probabilidad está dada por:
+
+$$
+f(x)=\frac{\binom{K}{x}\binom{N-K}{n-x}}{\binom{N}{n}} \quad \text{si } x=0,1,\ldots,n
+$$
+:::
+
+## Características de la Distribución Hipergeométrica
+
+**Parámetros:**
+
+- $N$: Tamaño del conjunto de objetos.
+- $K$: Número de objetos del primer tipo en el conjunto.
+- $n$: Tamaño de la muestra seleccionada.
+- $x$: Número de objetos del primer tipo en la muestra.
+
+**Función de Probabilidad:**
+
+\begin{equation}
+f(x) = \begin{cases}
+\frac{\binom{K}{x} \binom{N - K}{n - x}}{\binom{N}{n}} & \text{si } x = 0,1, \ldots, n \\
+0 & \text{en otro caso}
+\end{cases}
+\end{equation}
+
+**Parámetros Estadísticos**
+
+Esperanza (Media): $$E(X) = n \cdot \frac{K}{N}$$
+
+Varianza: $$Var(X) = n \cdot \frac{K}{N} \cdot \frac{N-K}{N} \cdot \frac{N-n}{N-1}$$
+
+Desviación Estándar: $$\sigma_X = \sqrt{Var(X)}$$
+
+## Ejemplo
+
+::: {#exm-hipergeometrica_1}
+Supongamos que en una urna hay 80 bolas, de las cuales 48 son rojas y 32 son azules. Si se seleccionan al azar 15 bolas sin reemplazo, ¿cuál es la probabilidad de que exactamente 7 de las bolas seleccionadas sean rojas?
+
+```{r}
+#| label: bola-hipergeometrica
+#| code-fold: true
+
+# Parámetros
+N <- 80 
+K <- 48  
+n <- 15  
+x <- 0:n  
+
+# Función de probabilidad hipergeométrica
+hipergeometrica <- function(N, K, n, x) {
+  prob <- (choose(K, x) * choose(N - K, n - x)) / choose(N, n)
+  return(prob)
+}
+
+# Cálculo de probabilidades 
+prob_bolas <- sapply(x, function(x) hipergeometrica(N, K, n, x))
+
+# Crear tabla 
+hipergeometrica_bola <- data.frame(
+  x = x, 
+  Probabilidad = prob_bolas
+  ) 
+
+kable(hipergeometrica_bola,
+      caption = "Distribución Hipergeométrica - Probabilidad de seleccionar exactamente 7 bolas rojas",
+      digits = 4) %>%
+  kable_styling(bootstrap_options = "striped")
+
+# Parámetros estadísticos 
+media_bola <- n * (K / N)
+varianza_bola <- n * (K / N) * ((N - K) / N) * ((N - n) / (N - 1))
+desv_std_bola <- sqrt(varianza_bola)
+
+
+cat("La probabilidad de seleccionar exactamente 7 bolas rojas es:", round(hipergeometrica_bola$Probabilidad[hipergeometrica_bola$x == 7], 4), "\n")
+cat("Media:", media_bola, "\n")
+cat("Varianza:", varianza_bola, "\n")
+cat("Desviación Estándar:", round(desv_std_bola, 4), "\n")
+```
+
+**Visualización**
+
+```{r}
+#| label: grafico-hipergeometrica
+#| fig-cap: "Distribución Hipergeométrica - Probabilidad de seleccionar bolas rojas"
+#| fig-width: 12
+#| code-fold: true
+
+ggplot(hipergeometrica_bola, aes(x = x, y = Probabilidad)) +
+  geom_col(fill = "steelblue", alpha = 0.7, width = 0.8) +
+  geom_text(aes(label = round(Probabilidad, 4)), vjust = -0.5, size = 3) +
+  geom_vline(xintercept = media_bola, color = "red", linetype = "dashed", linewidth = 1) +
+  annotate("text", x = media_bola + 1.5, y = max(hipergeometrica_bola$Probabilidad) * 0.8,
+           label = paste("E[x]=", media_bola), color = "red") +
+  scale_x_continuous(breaks = x) +
+  labs(title = "Distribución Hipergeométrica - Probabilidad de seleccionar bolas rojas",
+       x = "Número de bolas rojas seleccionadas",
+       y = "Probabilidad") +
+  theme_minimal() + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+:::
+
+## Comparación: Efecto del parámetro n sobre la distribución
+
+A continuación se muestra una comparación de la distribución hipergeométrica para diferentes tamaños de muestra $n$, manteniendo constantes los parámetros $N$ y $K$.
+
+
+```{r}
+#| label: comparacion-hipergeometrica
+#| fig-cap: "Comparación de la Distribución Hipergeométrica para diferentes tamaños de muestra n"
+#| fig-width: 12
+#| code-fold: true
+
+N <- 80
+K <- 48
+n_values <- c(10,15, 20, 30, 50, 65)
+
+# Crear data frame para comparación
+hipergeometrica_comp <- bind_rows(lapply(n_values, function(n) {
+  x <- 0:n
+  prob <- dhyper(x, K, N-K, n)
+  tibble(
+    x = x,
+    probabilidad = prob,
+    media = n * (K / N),
+    varianza = n * (K / N) * ((N - K) / N) * ((N - n) / (N - 1)),
+    n = as.factor(n)
+  )
+})
+)
+
+# Tabla de parámetros 
+parametros_comp <- tibble(
+  x = n_values,
+  Media = n_values * (K / N),
+  Varianza = n_values * (K / N) * ((N - K) / N) * ((N - n) / (N - 1)),
+  Desv_std = sqrt(n_values * (K / N) * ((N - K) / N) * ((N - n) / (N - 1)))
+)
+kable(parametros_comp,
+      caption = "Parámetros Estadísticos para diferentes tamaños de muestra n") %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+
+```{r}
+#| label: grafico-comparacion-hipergeometrica
+#| fig-cap: "Comparación de la Distribución Hipergeométrica para diferentes tamaños de muestra n"
+#| fig-width: 12
+#| code-fold: true
+
+media_df <- hipergeometrica_comp %>% distinct(n, media)
+
+ggplot(hipergeometrica_comp, aes(x = x, y = probabilidad)) +
+  geom_col(fill = "steelblue", width = 0.8) +
+  geom_vline(data = media_df, aes(xintercept = media), color = "red", linetype = "dashed", linewidth = 0.8) +
+  geom_text(data = media_df, aes(x = media, y = 0, label = paste0("E[x]=", round(media,2))),
+            color = "red", vjust = -0.5, size = 3) +
+  facet_wrap(~ n, scales = "free_x", ncol = 2) +
+  scale_x_continuous(breaks = function(x) pretty(x, n = 6)) +
+  labs(
+    title = "Distribución Hipergeométrica para distintos tamaños de muestra n",
+    subtitle = paste0("N = ", N, ", K = ", K),
+    x = "Número de bolas rojas seleccionadas",
+    y = "Probabilidad"
+  ) +
+  theme_minimal()
+```
