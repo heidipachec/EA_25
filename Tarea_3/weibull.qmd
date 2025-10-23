@@ -1,0 +1,204 @@
+---
+title: "Distribución Weibull"
+lang: es 
+---
+
+```{=html}
+<style>
+main.content {
+text-align: justify}
+</style>
+```
+
+```{r}
+#| label: setup
+#| include: false
+#| code-fold: true
+
+library(tidyverse)
+library(kableExtra)
+library(gridExtra)
+```
+
+La **distribución Weibull** es una distribución de probabilidad continua que se utiliza en el análisis de supervivencia, confiabilidad y modelado de fallas. Es útil para modelar el tiempo hasta la falla de un sistema.
+
+::: {def-weibull}
+Decimos que una variable aleatoria $x$ sigue una **distribución weibull** con parametros  $\alpha > 0$ y $\lambda > 0$ si tiene una función de densidad de probabilidad: 
+
+\begin{equation}
+f(x) = \begin{cases}
+\lambda\alpha (\lambda x)^{\alpha - 1} e^{-(\lambda x)^\alpha} & \text{ si } x > 0,
+\\
+0 & \text{ en otro caso.}
+\end{cases}
+\end{equation}
+:::
+
+
+**Parámetros:**
+
+- $\alpha$: parámetro de forma
+- $\lambda$: parámetro de escala
+
+tal que:
+
+$$
+X \sim Weibull (\alpha, \lambda)
+$$
+
+**Función de Distribución:**
+
+Con el cambio de variable $\lambda u = (\lambda y)^\alpha$ y suponiendo que $y$ es la variable de integración, la función de distribución queda dada por: 
+
+\begin{equation}
+F(x) = \begin{cases}
+1 - e^{-(\lambda x)^\alpha} & \text{ si } x > 0,
+\\
+0 & \text{ en otro caso.}
+\end{cases}
+\end{equation}
+
+**Parametros Estadísticos**
+
+Esperanza (Media): $$E(X) = \frac{1}{\lambda} \Gamma \left( 1 + \frac{1}{\alpha} \right)$$
+Varianza: $$ \operatorname{Var}(X)
+= \frac{1}{\lambda^2}\left[
+\Gamma\!\left(1+\frac{2}{\alpha}\right)
+- \Gamma^2 \!\left(1+\frac{1}{\alpha}\right)
+\right]$$
+
+La **distribución Weibull** ha sido utilizada en su mayoria para estudios de confiabilidad y durabilidad de componentes electrónicos y mecánicos. 
+
+Entonces, el valor de la variable aleatoria representa el tiempo de vida útil que tiene uno o varios componentes antes de fallar.
+
+Cuando el parametro $\alpha = 1$, la distribución Weibull se reduce a una distribución exponencial con parámetro $\lambda$. Mientras que cuando $\alpha = 2$ y $\lambda = \frac{1}{\sqrt{2\sigma^2}}$ se convierte en una distribución Rayleigh ($\sigma$).
+
+
+## Ejemplo 
+
+::: {#exm-weibull_1}
+Se sabe que el tiempo de vida útil (en horas) de cierto tipo de bombillas sigue una distribución Weibull con parámetros $\alpha = 1.5$ y $\lambda = 0.01$.
+
+¿Cuál es la probabilidad de que una bombilla dure más de 400 horas?
+
+```{r}
+#| label: weibull-ejemplo
+#| code-fold: true
+
+# Parámetros
+alpha <- 1.5
+lambda <- 0.01
+x <- 400
+
+# Función de Distribución Weibull 
+weibull_pdf <- function(x, alpha, lambda) {
+  if (x < 0) {
+    return(0)
+  } else {
+    return(lambda * alpha * (lambda * x)^(alpha - 1) * exp(-(lambda * x)^alpha))
+  }
+}
+
+# Cálculo de probabilidad
+prob_mas_400 <- sapply(x, function(x) 1 - (1 - exp(-(lambda * x)^alpha)))
+
+# Crear tabla 
+weibull_bombilla <- data.frame(
+  x=x,
+  probabilidad = prob_mas_400
+)
+kable(weibull_bombilla, caption = "Distribución Weibull - Probabilidad de que una bombilla dure más de 400 horas",
+      digits = 4) %>%
+  kable_styling(bootstrap_options = "striped")
+
+# Parámetros estadísticos 
+media_bombilla <- (1/lambda) * gamma(1+(1/alpha))
+varianza_bombilla <- (1/lambda^2) * (gamma(1+(2 / alpha)) - gamma(1 + (1 / alpha))^2)
+desv_std_bombilla <- sqrt(varianza_bombilla)
+
+cat("Media:", round(media_bombilla, 4), "\n")
+cat("Varianza:", round(varianza_bombilla, 4), "\n")
+cat("Desviación Estándar:", round(desv_std_bombilla, 4), "\n")
+```
+
+**Visualización**
+
+```{r}
+#| label: grafico-weibull
+#| fig-cap: "Distribución Weibull - Probabilidad de que una bombilla dure más de 400 horas"
+#| code-fold: true
+
+# Rango de valores
+x_vals <- seq(0, 1000, by = 1)
+
+# Cálculo de densidades
+densidades <- sapply(x_vals, function(x) weibull_pdf(x, alpha, lambda))
+
+# Gráfica
+weibull_plot <- ggplot(data.frame(x = x_vals, Densidad = densidades), aes(x = x, y = Densidad)) +
+  geom_line(color = "firebrick", linewidth = 1.5) +
+  labs(title = "Distribución Weibull",
+       x = "Tiempo (horas)",
+       y = "Densidad de Probabilidad") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+weibull_plot
+```
+
+## Comparación: Efecto de los parámetros
+
+A continuación se muestra una comparación de la distribución Weibull para diferentes valores de los parámetros $\alpha$ y $\lambda$.
+
+```{r}
+#| label: comparacion-weibull
+#| fig-cap: "Comparación de la Distribución Weibull para diferentes valores de los parámetros α y λ"
+#| fig-width: 12
+#| code-fold: true
+
+x_vals <- seq(0, 100, by = 0.1)
+
+params <- list(
+  list(alpha = 0.5, lambda = 0.1),
+  list(alpha = 1, lambda = 0.1),
+  list(alpha = 1.5, lambda = 0.1),
+  list(alpha = 2, lambda = 0.1),
+  list(alpha = 1, lambda = 0.05)
+)
+
+# Cálculo de densidades y data.frame
+weibull_data <- do.call(rbind, lapply(params, function(p) {
+  densidades <- sapply(x_vals, function(x) weibull_pdf(x, p$alpha, p$lambda))
+  data.frame(x = x_vals, Densidad = densidades, Parametros = paste("α =", p$alpha, ", λ =", p$lambda))
+}))
+
+# Tabla de parámetros estadísticos
+parametros_comp <- tibble(
+  Parametros = sapply(params, function(p) paste("α =", p$alpha, ", λ =", p$lambda)),
+  Media = sapply(params, function(p) (1/p$lambda) * gamma(1 + (1/p$alpha))),
+  Varianza = sapply(params, function(p) (1/p$lambda^2) * (gamma(1 + (2/p$alpha)) - (gamma(1 + (1/p$alpha)))^2)),
+  Desv_std = sapply(params, function(p) sqrt((1/p$lambda^2) * (gamma(1 + (2/p$alpha)) - (gamma(1 + (1/p$alpha)))^2)))
+)
+kable(parametros_comp, caption = "Parámetros Estadísticos para diferentes valores de α y λ") %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+```{r}
+#| label: grafico-comparacion-weibull
+#| fig-cap: "Comparación de la Distribución Weibull para diferentes valores de los parámetros α y λ"
+#| code-fold: true
+
+ggplot(weibull_data, aes(x = x, y = Densidad, color = Parametros)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Comparación de la Distribución Weibull",
+       x = "Tiempo (horas)",
+       y = "Densidad de Probabilidad",
+       color = "Parámetros") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+
+
