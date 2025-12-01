@@ -1,0 +1,637 @@
+---
+title: "Análisis Estadístico de las Finanzas Públicas Estatales en México: Egresos"
+subtitle: "Agrupamiento (Clustering)"
+author: "Heidi Idali Pacheco Almaraz"
+format: 
+  html:
+    grid: 
+      body-width: 1000px
+editor: visual
+---
+
+```{=html}
+<style>
+main.content {
+text-align: justify}
+</style>
+```
+
+```{r}
+#| code-fold: true
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(RColorBrewer)
+library(sf)          # Para datos espaciales
+library(viridis)     # Para paletas de colores
+library(DT)
+library(plotly)
+library(knitr)
+library(kableExtra)
+library(corrplot)
+library(broom)
+library(scales)
+library(multcomp)
+
+
+library(factoextra)
+library(FactoMineR)
+```
+
+# Introducción
+
+Previamente se hizo una descripción general de los egresos estatales de México utilizando la base de datos de EFIPEM. En este documento, se llevará a cabo el desglose de los egresos por capítulos encontrando los componentes principales, que son proyecciones ortogonales sobre el espacio vectorial generado por los datos.
+
+## Estructura General de los Datos
+
+-   Dataset `egresos`: Filtrado para el tema "Egresos" y categoría "Capítulo". Se agrega porcentaje anual de cada capitulo.
+-   Dataset `egresos_agregados`: Agreado por año, estado y categoría principal con cálculos de porcentaje anual.
+-   Dataset `egresos_wide`: Transformando a formato ancho con valores y porcentajes por categoría principal.
+
+Consideramos los datos de finanzas públicas de los estado de México disponibles en varios archivos CSV dentro de la carpeta "conjunto_de_datos". No se consideran los valores de la Ciudad de México.
+
+```{r}
+#| code-fold: true
+#| message: false
+#| warning: false
+
+
+# Se identifican los archivos CSV en el directorio especificado
+data_sets <- list.files("./conjunto_de_datos", pattern = "*.csv", full.names = TRUE)
+
+# Se leen y combinan los archivos CSV en un solo data frame
+datos <- data_sets |> 
+  set_names(nm = data_sets) |> 
+  map_dfr(read_csv, .id = "source_file")
+
+# Convertir variables de tipo character a factor
+datos_factor <- datos |> 
+  dplyr::select(where(is.character)) |> 
+  names()
+
+datos <- datos |> 
+  mutate(across(all_of(datos_factor), as_factor))
+
+# Crear variables adicionales
+datos <- datos |> mutate(ANIO_factor = as_factor(ANIO), VALOR_millones = VALOR / 1e6)
+datos <- datos |> rename(CVE_ENT = ID_ENTIDAD)
+
+# Cargar datos de estados y unir con el conjunto de datos principal
+datos_estado <- read_csv("tc_entidad.csv")
+datos_estado <- datos_estado |> mutate(across(everything(), as_factor))
+datos_estado$ZONA <- factor(datos_estado$ZONA, levels = c("NORTE", "CENTRO", "SUR"))
+
+datos <- left_join(datos, datos_estado)
+
+# Eliminar columnas no necesarias
+datos <- datos |> dplyr::select(-source_file, -PROD_EST, -COBERTURA, -ESTATUS) 
+
+#glimpse(datos)
+nacional_estado <- st_read("data_nacional/00ent.shp", options = "ENCODING=LATIN1", quiet = TRUE)
+nacional_estado <- left_join(nacional_estado, datos_estado, by = "CVE_ENT")
+
+cat("Años disponibles:", paste(unique(datos$ANIO_factor), collapse = ", "), "\n")
+cat("Entidades incluidas:", length(unique(datos$CVE_ENT)), "\n")
+cat("Temas:", paste(unique(datos$TEMA), collapse = ", "), "\n")
+cat("Categorías:", paste(unique(datos$CATEGORIA), collapse = ", "), "\n\n")
+```
+
+```{r}
+#| code-fold: true
+
+# Filtrar datos de egresos a nivel capítulo
+egresos <- datos |> filter(TEMA == "Egresos", CATEGORIA == "Capítulo")
+
+# Agregar porcentaje anual al dataset original
+egresos <- egresos |> 
+  group_by(ANIO, CVE_ENT, NOM_ENT) |> 
+  mutate(
+    valor_estado_anio = sum(VALOR_millones, na.rm = TRUE),
+    porcentaje_anual = (VALOR_millones / valor_estado_anio) * 100
+  ) |> 
+  ungroup()
+
+# Definir niveles de categoría para egresos
+niveles_categoria_egresos <- c("Servicios personales",
+                               "Materiales y suministros",
+                               "Servicios generales",
+                               "Transferencias, asignaciones, subsidios y otras ayudas",
+                               "Obras públicas y acciones sociales",
+                               "Bienes muebles, inmuebles e intangibles", "Inversión pública",
+                               "Inversiones financieras y otras provisiones", "Recursos asignados a municipios",
+                               "Otros egresos", 
+                               "Deuda pública", 
+                               "Disponibilidad final")
+
+egresos$DESCRIPCION_CATEGORIA <- factor(egresos$DESCRIPCION_CATEGORIA, 
+                                       levels = niveles_categoria_egresos)
+
+# Agregar columna de categorías principales para egresos
+egresos <- egresos |> 
+  mutate(
+    CATEGORIA_PRINCIPAL = case_when(
+      # Gasto Corriente
+      DESCRIPCION_CATEGORIA %in% c("Servicios personales", 
+                                   "Materiales y suministros",
+                                   "Servicios generales",
+                                   "Transferencias, asignaciones, subsidios y otras ayudas") ~ "Gasto Corriente",
+      
+      # Gasto Capital
+      DESCRIPCION_CATEGORIA %in% c("Obras públicas y acciones sociales",
+                                   "Bienes muebles, inmuebles e intangibles",
+                                   "Inversión pública",
+                                   "Inversiones financieras y otras provisiones") ~ "Gasto Capital",
+      
+      # Deuda Pública
+      DESCRIPCION_CATEGORIA %in% c("Deuda pública") ~ "Deuda Pública",
+      
+      # Otros Egresos
+      DESCRIPCION_CATEGORIA %in% c("Otros egresos", "Disponibilidad final") ~ "Otros Egresos"
+    ),
+    
+    # Convertir a factor con orden específico
+    CATEGORIA_PRINCIPAL = factor(CATEGORIA_PRINCIPAL, 
+                                levels = c("Gasto Corriente",
+                                           "Gasto Capital",
+                                           "Deuda Pública",
+                                           "Otros Egresos"))
+  )
+
+
+# Agregar datos por ANIO, Estado y CATEGORIA_PRINCIPAL con porcentajes
+egresos_agregados <- egresos |> 
+  group_by(ANIO, CVE_ENT, NOM_ENT, ABR_ENT, ZONA, CATEGORIA_PRINCIPAL, ANIO_factor) |> 
+  summarise(
+    VALOR = sum(VALOR, na.rm = TRUE),
+    VALOR_millones = sum(VALOR_millones, na.rm = TRUE),
+    .groups = "drop"
+  ) |> 
+  # Calcular porcentaje por estado y año
+  group_by(ANIO, CVE_ENT, NOM_ENT) |> 
+  mutate(
+    valor_estado_anio = sum(VALOR_millones, na.rm = TRUE),
+    porcentaje_anual = (VALOR_millones / valor_estado_anio) * 100
+  ) |> 
+  ungroup() |> 
+  # Reordenar columnas para mantener estructura similar
+  dplyr::select(
+    ANIO,
+    CVE_ENT, 
+    VALOR,
+    ANIO_factor,
+    VALOR_millones,
+    porcentaje_anual,
+    NOM_ENT,
+    ABR_ENT,
+    ZONA,
+    CATEGORIA_PRINCIPAL
+  )
+
+
+# Transformar a formato ancho con valor y porcentaje por categoría
+egresos_wide <- egresos_agregados |> 
+  dplyr::select(ANIO, CVE_ENT, ANIO_factor, NOM_ENT, ABR_ENT, ZONA, 
+         CATEGORIA_PRINCIPAL, VALOR_millones, porcentaje_anual) |> 
+  pivot_wider(
+    names_from = CATEGORIA_PRINCIPAL,
+    values_from = c(VALOR_millones, porcentaje_anual),
+    names_sep = "_"
+  ) |> 
+  rename_with(
+    ~ case_when(
+      .x == "VALOR_millones_Gasto Corriente" ~ "Gasto_Corriente_valor",
+      .x == "porcentaje_anual_Gasto Corriente" ~ "Gasto_Corriente_porcentaje",
+      .x == "VALOR_millones_Gasto Capital" ~ "Gasto_Capital_valor",
+      .x == "porcentaje_anual_Gasto Capital" ~ "Gasto_Capital_porcentaje",
+      .x == "VALOR_millones_Deuda Pública" ~ "Deuda_Publica_valor",
+      .x == "porcentaje_anual_Deuda Pública" ~ "Deuda_Publica_porcentaje",
+      .x == "VALOR_millones_Otros Egresos" ~ "Otros_Egresos_valor",
+      .x == "porcentaje_anual_Otros Egresos" ~ "Otros_Egresos_porcentaje",
+      TRUE ~ .x
+    )
+  ) |> 
+  # Reemplazar NA con 0 donde sea apropiado
+  mutate(
+    across(contains("_valor"), ~ replace_na(.x, 0)),
+    across(contains("_porcentaje"), ~ replace_na(.x, 0))
+  ) |> 
+  # Reordenar columnas
+  dplyr::select(
+    ANIO, CVE_ENT, ANIO_factor, NOM_ENT, ABR_ENT, ZONA,
+    Gasto_Corriente_valor, Gasto_Corriente_porcentaje,
+    Gasto_Capital_valor, Gasto_Capital_porcentaje,
+    Deuda_Publica_valor, Deuda_Publica_porcentaje,
+    Otros_Egresos_valor, Otros_Egresos_porcentaje
+  )
+```
+
+Se seleccionan las variables numéricas y de un año en particular, en este caso 2020. 
+
+```{r}
+#| code-fold: true
+#| message: false
+#| warning: false
+
+my_year <- 2020
+
+egresos_year_bar <- egresos_agregados |> 
+  filter(ANIO == my_year) 
+
+egresos_year <- egresos_wide |> 
+  filter(ANIO == my_year)
+
+egresos_wo_MEX <- egresos_year |> filter(ABR_ENT != "MEX")
+
+egresos_numeric_valor <- egresos_wo_MEX |> 
+  dplyr::select(
+    Gasto_Corriente_valor, 
+    Gasto_Capital_valor, 
+    Deuda_Publica_valor, 
+    Otros_Egresos_valor, 
+  )
+
+row.names(egresos_numeric_valor) <- egresos_wo_MEX$ABR_ENT
+
+egresos_numeric_porcentaje <- egresos_year |> 
+  dplyr::select(
+    Gasto_Corriente_porcentaje,
+    Gasto_Capital_porcentaje,
+    Deuda_Publica_porcentaje,
+    Otros_Egresos_porcentaje
+  )
+
+row.names(egresos_numeric_porcentaje) <- egresos_year$ABR_ENT
+```
+
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-height: 10
+#| fig-align: "center"
+
+# Con etiquetas de porcentaje (solo categorías >5%)
+graf_bar <- egresos_year_bar |> 
+  mutate(etiqueta = ifelse(porcentaje_anual >= 5, 
+                          paste0(round(porcentaje_anual, 1), "%"), 
+                          "")) |> 
+  ggplot(aes(x = ABR_ENT, 
+             y = porcentaje_anual, 
+             fill = CATEGORIA_PRINCIPAL)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = etiqueta), 
+            position = position_stack(vjust = 0.5),
+            size = 4, 
+            color = "white",
+            fontface = "bold") +
+  coord_flip() +
+  scale_fill_viridis_d(option = "turbo") +
+  labs(
+    title = "Composición de Egresos por Estado",
+    subtitle = "Porcentaje por categoría (etiquetas >5%)",
+    x = "Estado",
+    y = "Porcentaje (%)",
+    fill = "Categoría"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10),
+    axis.title.x = element_text(size = 12),
+    axis.title.y = element_text(size = 12),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 11)
+  ) +
+  guides(fill = guide_legend(nrow = 3, byrow = TRUE))
+
+graf_bar
+```
+
+# Distancias 
+
+A continuación se muestra una representación gráfica de la matriz de distancias utilizando la métrica euclidiana para los porcentajes.
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| fig-width: 10
+#| fig-height: 10
+#| fig-align: "center"
+
+dist.eucl <- dist(egresos_numeric_porcentaje)
+dist.eucl_matrix <- as.matrix(dist.eucl)
+dist.eucl_plot <- fviz_dist(dist.eucl, lab_size = 6)+
+  theme(axis.text.x = element_text(size=15),
+        axis.text.y = element_text(size=15))
+ggplotly(dist.eucl_plot)
+```
+
+Podemos ver que hay una estructura de heterogeneidad regional significativa en los patrones de egresos estatales. Existen distancias notables entre los estados que puede atribuirse a las diferencias en prioridades presupuestarias, pues como vimos anteriormente, no todos los estados destinan gastos a un mismo rubro. Otros factores que pueden estar generando estas distancias tambien son los ingresos que perciben los estados, el tamaño de su población y el desarrollo economico de la región. 
+Sin embargo, tambien se puede ver que hay distancias cortas en ciertos estados, lo que nos indica que sus estructuras de egresos es similar y tal vez se deba al contexto geográfico y socioeconomico de dichos estados.
+
+
+# Agrupamiento jerárquico
+
+Llevamos a cabo el agrupamiento jerárquico utilizando la matriz de distancias Euclidianas. Se muestran los dendrogramas utilizando diferentes métodos de enlace.
+
+## Distancia Euclidiana
+
+::: panel-tabset
+### Completo
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| fig-width: 10
+#| fig-height: 6
+
+euc_comp_hc <- hclust(dist.eucl, method = "complete")
+fviz_dend(euc_comp_hc, k=5, cex=0.9, k_colors = "jco", rect=TRUE, rect_border= "jco", rect_fill = TRUE, labels_track_height=3)
+
+```
+
+En este caso, al considerar 5 grupos, *cortamos* el árbol, identificamos cuántas observaciones hay en cada cluster y por ejemplo, mostramos los elementos del grupo 5.
+
+```{r}
+#| code-fold: true
+
+grp_euc_complete <- cutree(euc_comp_hc, k=5)
+grp_complete_df <- as.data.frame(grp_euc_complete)
+grp_complete_df <- grp_complete_df |> 
+  rownames_to_column(var = "ABR_ENT")
+table(grp_euc_complete)
+rownames(egresos_numeric_porcentaje)[grp_euc_complete == 3]
+```
+
+Utilizando la función `fviz_cluster()` podemos visualizar el resultado por medio de un scatterplot. Las observaciones son representadas en el plano usando componentes principales.
+
+```{r}
+#| code-fold: true
+
+fviz_cluster(list(data= egresos_numeric_porcentaje, cluster= grp_euc_complete),
+             palette = "jco", ellipse.type = "convex", repel = TRUE, show.clust.cent = FALSE, ggtheme = theme_bw())
+```
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+nacional_estado <- left_join(nacional_estado, grp_complete_df , by = "ABR_ENT")
+nacional_estado$grp_euc_complete <- as.factor(nacional_estado$grp_euc_complete)
+nacional_estado <- nacional_estado |>  mutate(grp_euc_complete = if_else(is.na(grp_euc_complete), "Otro", grp_euc_complete))
+
+mapa <- ggplot(nacional_estado) +
+  geom_sf(aes(fill=grp_euc_complete), color = "gray50", size = 0.5) +
+  labs(
+    title = "Clustering, linkage complete ",
+    fill = "Cluster"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+  
+print(mapa)
+```
+
+Los estados del norte tienden a agruparse juntos, lo que sugiere que comparten patrones similares en la asignación de egresos. Esto podría deberse a factores económicos y sociales comunes en la región norteña. Por otro lado, los estados del centro y sur del país muestran una mayor diversidad en sus patrones de egresos, lo que podría reflejar diferencias en prioridades presupuestarias y necesidades específicas de cada estado.
+
+### Single
+
+```{r}
+#| code-fold: true
+#| warning: false
+
+euc_single_hc <- hclust(dist.eucl, method = "single")
+fviz_dend(euc_single_hc, k=5, cex=0.5, k_colors = "jco", rect=TRUE, rect_border= "jco", rect_fill = TRUE, labels_track_height=0.1)
+```
+
+Se proyecta en el subespacio generado por las dos primeras componentes principales:
+
+```{r}
+#| code-fold: true
+
+grp_euc_single <- cutree(euc_single_hc, k=5)
+grp_single_df <- as.data.frame(grp_euc_single)
+grp_single_df <- grp_single_df |> 
+  rownames_to_column(var = "ABR_ENT")
+fviz_cluster(list(data= egresos_numeric_porcentaje, cluster= grp_euc_single),
+             palette = "jco", ellipse.type = "convex", repel = TRUE, show.clust.cent = FALSE, ggtheme = theme_bw())
+```
+
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+nacional_estado <- left_join(nacional_estado, grp_single_df , by = "ABR_ENT")
+nacional_estado$grp_euc_single <- as.factor(nacional_estado$grp_euc_single)
+
+mapa <- ggplot(nacional_estado) +
+  geom_sf(aes(fill=grp_euc_single), color = "gray50", size = 0.5) +
+  labs(
+    title = "Clustering, linkage single ",
+    fill = "Cluster"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+  
+print(mapa)
+```
+
+### Average
+
+```{r}
+#| code-fold: true
+#| warning: false
+
+euc_ave_hc <- hclust(dist.eucl, method = "average")
+fviz_dend(euc_ave_hc, k=5, cex=0.5, k_colors = "jco", rect=TRUE, rect_border= "jco", rect_fill = TRUE, labels_track_height=0.25)
+```
+
+Se proyecta en el subespacio generado por las dos primeras componentes principales:
+
+```{r}
+#| code-fold: true
+
+grp_euc_ave <- cutree(euc_ave_hc, k=5)
+grp_ave_df <- as.data.frame(grp_euc_ave)
+grp_ave_df <- grp_ave_df |> 
+  rownames_to_column(var = "ABR_ENT")
+fviz_cluster(list(data= egresos_numeric_porcentaje, cluster= grp_euc_ave),
+             palette = "jco", ellipse.type = "convex", repel = TRUE, show.clust.cent = FALSE, ggtheme = theme_bw())
+```
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+nacional_estado <- left_join(nacional_estado, grp_ave_df , by = "ABR_ENT")
+nacional_estado$grp_euc_ave <- as.factor(nacional_estado$grp_euc_ave)
+
+mapa <- ggplot(nacional_estado) +
+  geom_sf(aes(fill=grp_euc_ave), color = "gray50", size = 0.5) +
+  labs(
+    title = "Clustering, linkage average",
+    fill = "Cluster"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+  
+print(mapa)
+```
+
+
+### Ward.D2
+
+```{r}
+#| code-fold: true
+#| warning: false
+
+euc_ward2_hc <- hclust(dist.eucl, method = "ward.D2")
+fviz_dend(euc_ward2_hc, k=5, cex=0.5, k_colors = "jco", rect=TRUE, rect_border= "jco", rect_fill = TRUE, labels_track_height=0.25)
+```
+
+Se proyecta en el subespacio generado por las dos primeras componentes principales:
+
+```{r}
+#| code-fold: true
+
+grp_euc_ward2 <- cutree(euc_ward2_hc, k=5)
+grp_ward2_df <- as.data.frame(grp_euc_ward2)
+grp_ward2_df <- grp_ward2_df |> 
+  rownames_to_column(var = "ABR_ENT")
+fviz_cluster(list(data= egresos_numeric_porcentaje, cluster= grp_euc_ward2),
+             palette = "jco", ellipse.type = "convex", repel = TRUE, show.clust.cent = FALSE, ggtheme = theme_bw())
+```
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+nacional_estado <- left_join(nacional_estado, grp_ward2_df , by = "ABR_ENT")
+nacional_estado$grp_euc_ward2 <- as.factor(nacional_estado$grp_euc_ward2)
+
+mapa <- ggplot(nacional_estado) +
+  geom_sf(aes(fill=grp_euc_ward2), color = "gray50", size = 0.5) +
+  labs(
+    title = "Clustering, linkage Ward",
+    fill = "Cluster"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+  
+print(mapa)
+```
+:::
+
+# K-means
+
+::: panel-tabset
+## K = 3
+
+```{r}
+#| code-fold: true
+
+km3 <- kmeans(egresos_numeric_porcentaje, 3, nstart = 25)
+km3_df <- as.data.frame(km3$cluster)
+km3_df <- km3_df |> 
+  rownames_to_column(var = "ABR_ENT")
+colnames(km3_df)[2] <- "km3_cluster"
+km3_df$km3_cluster <- as.factor(km3_df$km3_cluster)
+fviz_cluster(km3, data = egresos_numeric_porcentaje, palette= "jco", ellipse.type = "euclid", star.plot=TRUE, ggtheme=theme_bw())
+```
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+nacional_estado <- left_join(nacional_estado, km3_df , by = "ABR_ENT")
+
+mapa <- ggplot(nacional_estado) +
+  geom_sf(aes(fill=km3_cluster), color = "gray50", size = 0.5) +
+  labs(
+    title = "K means, K=3",
+    fill = "Cluster"
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+  
+print(mapa)
+```
+
+## K = 4
+
+```{r}
+#| code-fold: true
+
+km4 <- kmeans(egresos_numeric_porcentaje, 4, nstart = 25)
+km4_df <- as.data.frame(km4$cluster)
+km4_df <- km4_df |> 
+  rownames_to_column(var = "ABR_ENT")
+colnames(km4_df)[2] <- "km4_cluster"
+km4_df$km4_cluster <- as.factor(km4_df$km4_cluster)
+fviz_cluster(km4, data = egresos_numeric_porcentaje, palette= "jco", ellipse.type = "euclid", star.plot=TRUE, ggtheme=theme_bw())
+```
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+nacional_estado <- left_join(nacional_estado, km4_df , by = "ABR_ENT")
+
+mapa <- ggplot(nacional_estado) +
+  geom_sf(aes(fill=km4_cluster), color = "gray50", size = 0.5) +
+  labs(
+    title = "K means, K=4",
+    fill = "Cluster"
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+  
+print(mapa)
+```
+:::
