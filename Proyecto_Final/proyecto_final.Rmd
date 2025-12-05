@@ -1,0 +1,673 @@
+---
+title: "Índice Compuesto de Bienestar Municipal y Desigualdad Territorial en Nuevo León"
+author: "Heidi Idali Pacheco Almaraz"
+format: 
+  html:
+    grid:
+      body-width: 950px
+editor: visual
+lang: es
+---
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(sf)          
+library(viridis)     
+library(janitor)    
+library(scales)
+library(factoextra)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ineq)
+library(spdep)
+
+```
+
+# Introducción
+
+México, es un país que a pesar de su crecimiento económico, no ha logrado generar un bienestar equitativo para toda la sociedad. El sistema estructural arraigado que se manifiesta en forma de disparidades en el acceso a los servicios básicos, la educación, la salud y las oportunidades laborales limitan de manera persistente las perspectivas de desarrollo humano en todos los estratos sociales. Podemos observar estas asimetrías regionales cuando comparamos el alto nivel de vida en municipios como San Pedro Garza García en Nuevo León con las condiciones de vida inestable e inseguras que prevalecen en otros municipios de la región. Estas heterogeneidades no solo reflejan asimetrías socioeconómicas y la frágil cohesión social, sino que también actúa como una barrera estructural para lograr un crecimiento económico sostenible e inclusivo para el país.
+
+En el presente proyecto se llevará a cabo el análisis del bienestar municipal y la desigualdad territorial en el estado de Nuevo León, México, utilizando datos del Censo de Población y Vivienda 2020 del INEGI. Se emplearán técnicas de Análisis Exploratorio de Datos (EDA), Índices compuestos, Medidas de desigualdad y Análisis Espacial.
+
+## Objetivos
+
+### Objetivo General
+
+Analizar el bienestar municipal y la desigualdad territorial en Nuevo León, México a través de la integración de datos censales y marco geoestadístico.
+
+### Objetivos Específicos
+
+1.  Realizar un Análisis Exploratorio de Datos (EDA) para comprender la distribución espacial de los indicadores seleccionados.
+2.  Construir Índices Compuestos de Bienestar Municipal utilizando técnicas de Normalización y Análisis Multivariado.
+3.  Evaluar la Desigualdad Territorial mediante el cálculo del coeficiente de Gini y la generación de curvas de Lorenz.
+
+# Marco Teórico
+
+::: {#def-gini}
+El **coeficiente de Gini** mide la desigualdad económica de una sociedad, mediante la exploración del nivel de concentración que existe en la distribución de los ingresos entre la población.
+
+Se calcula con la siguiente fórmula:
+
+$$
+G = \frac{A}{A+B}100
+$$
+
+Toma los siguientes valores:
+
+-   0 = mayores condiciones de equidad en la distribución del ingreso
+-   1 = mayor desigualdad en la distribución del ingreso
+:::
+
+::: {#def-indice-compuesto}
+El **Índice Compuesto** agrupa muchas acciones, valores o índices para medir el desempeño general del mercado o sector.
+:::
+
+::: {#def-pca}
+El **Análisis de Componentes Principales** representan combinaciones lineales normalizadas de las variables originales dentro de un conjunto de datos.
+:::
+
+::: {#def-isp}
+El **Índice Simple Promediado (ISP)** es una técnica de agregación que calcula el promedio aritmético de los valores normalizados de múltiples indicadores para crear un índice compuesto.
+:::
+
+::: {#def-indice-moran}
+El **Índice de Moran** mide la autocorrelación espacial basada en las ubicaciones y los valores de las entidades simultáneamente. Dado un conjunto de entidades y un atributo asociado, evalúa si el patrón expresado está agrupado, disperso o es aleatorio.
+:::
+
+::: {#def-lisa}
+El **Análisis de Indicadores Locales de Autocorrelación Espacial (LISA)** identifica clústeres espaciales y puntos atípicos al evaluar la autocorrelación local de un conjunto de datos geoespaciales.
+:::
+
+# Descripción de los datos
+
+**Fuente y período**
+
+Los datos provienen del **Instituto Nacional de Estadística y Geografía (INEGI)**. Específicamente, el *Censo y Conteo de Población y Vivienda 2020* y el *Marco Geoestadístico*.
+
+-   Censo de Población y Vivienda: https://inegi.org.mx/app/descarga/
+-   Marco Geoestadístico: https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=794551132173
+
+**Indicadores del análisis**
+
+Los indicadores seleccionadas para el análisis incluyen:
+
+-   Población total
+-   Población total hombres
+-   Población total mujeres
+-   Densidad de población
+-   Total de viviendas particulares habitadas
+-   Viviendas particulares habitadas que disponen de energía eléctrica
+-   Viviendas particulares habitadas que disponen de drenaje
+-   Población derechohabiente a servicios de salud
+-   Porcentaje de viviendas particulares habitadas que disponen de Internet
+-   Porcentaje de viviendas con agua entubada dentro de la vivienda
+
+# Lectura de datos
+
+## Datos Espaciales
+
+::: panel-tabset
+### Límites Municipales de Nuevo León
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-align: center
+
+municipios <- st_read("19mun.shp", options = "ENCODING=LATIN1", quiet = TRUE)
+
+mapa_municipios <- ggplot(municipios) +
+  geom_sf(fill = "lightgreen", color = "white", size = 0.3) +
+  labs(
+    title = "Municipios de Nuevo León",
+    subtitle = paste("Total de municipios:", nrow(municipios)),
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+
+print(mapa_municipios)
+```
+
+### Áreas
+
+```{r areas}
+#| code-fold: true
+
+municipios <- municipios %>%
+  mutate(area_km2 = as.numeric(st_area(.)) / 1e6)
+
+municipios_grandes <- municipios |> 
+  st_drop_geometry() |> 
+  arrange(desc(area_km2)) |> 
+  select(NOMGEO, area_km2) |> 
+  head(10)
+
+print("Los 10 municipios más grandes de Nuevo León:")
+knitr::kable(municipios_grandes, 
+             col.names = c("Municipio", "Área (km²)"),
+             digits = 2)
+```
+
+### Mapa de áreas
+
+```{r mapa_areas}
+#| code-fold: true
+
+mapa_areas <- ggplot(municipios) +
+  geom_sf(aes(fill = area_km2), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Área\n(km²)",
+    trans = "log10",
+    labels = scales::comma_format()
+  ) +
+  labs(
+    title = "Área de los Municipios de Nuevo León",
+    subtitle = "Coloreado por área en escala logarítmica",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+
+print(mapa_areas)
+```
+:::
+
+## Censo de Población y Vivienda 2020
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+
+datos_total <- read_csv("cpv_valor_19.csv", na = c("ND"))
+
+datos_total <- datos_total |> filter(año == 2020)
+
+datos_seleccion <- datos_total |> 
+  filter(indicador %in% c("Población total", "Población total hombres", "Población total mujeres", "Densidad de población", "Total de viviendas particulares habitadas", "Viviendas particulares habitadas que disponen de energía eléctrica", "Viviendas particulares habitadas que disponen de drenaje", "Población derechohabiente a servicios de salud", "Porcentaje de viviendas particulares habitadas que disponen de Internet", "Porcentaje de viviendas con agua entubada dentro de la vivienda"), desc_municipio != "Estatal") |> 
+  select(desc_municipio, indicador, valor)
+
+datos <- datos_seleccion |>
+    pivot_wider(names_from = indicador, values_from = valor) 
+
+datos <- datos |> 
+  clean_names() 
+
+datos <- datos |> 
+  mutate(desc_municipio = if_else(desc_municipio == "EL Arenal", "El Arenal", desc_municipio))
+
+datos <- datos |> 
+  mutate(NOMGEO = desc_municipio)
+
+datos <- left_join(municipios, datos)
+```
+
+# Análisis Exploratorio de Datos (EDA)
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+estadisticos_descriptivos <- datos %>%
+  st_drop_geometry() %>%
+  select(where(is.numeric)) %>%
+  psych::describe() %>%
+  rownames_to_column("Indicador") %>%
+  select(Indicador, n, mean,median, sd, min, max, skew, kurtosis)
+
+print("Estadísticas descriptivas:")
+knitr::kable(estadisticos_descriptivos, digits = 2)
+```
+
+Podemos observar que existe una desigualdad territorial marcada en los municipios de Nuevo León pues la diferencia entre las medias y las medianas nos muestran que hay pocos municipios que concentran la mayor parte de la población, infraestructura y servicios, mientras que el restante presenta valores más bajos. Es decir, nos habla de que en Nuevo León pese a ser un estado urbanizado, todavía tiene zonas rurales con una densidad de población menor. 
+
+Así mismo, se observa que hay dos patrones en los accesos a servicios básicos. Primero, el acceso a internet tiene una distribución más homogénea para los municipios de Nuevo León. Segunda, el acceso a agua entubada tiene una alta cobertura en la región, sin embargo, existe un 28.87% que carece de este servicio. 
+
+::: panel-tabset
+### Mapa: Población Total
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = poblacion_total), color = "darkblue", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Población Total"
+  ) +
+  labs(
+    title = "Población Total de los Municipios de Nuevo León",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+### Mapa: Densidad de Población
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+
+ggplot(datos) +
+  geom_sf(aes(fill = densidad_de_poblacion), color = "darkblue", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Densidad de la Población"
+  ) +
+  labs(
+    title = "Densidad de la Población de los Municipios de Nuevo León",
+    caption = "Fuente: INEGI - Marco Geoestadístico"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+:::
+
+# Índices
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+indicadores <- datos %>%
+  st_drop_geometry() %>%
+  select(porcentaje_de_viviendas_particulares_habitadas_que_disponen_de_internet,
+         porcentaje_de_viviendas_con_agua_entubada_dentro_de_la_vivienda,
+         viviendas_particulares_habitadas_que_disponen_de_energia_electrica,
+         viviendas_particulares_habitadas_que_disponen_de_drenaje,
+         poblacion_derechohabiente_a_servicios_de_salud)
+
+indicadores_norm <- scale(indicadores)
+i_data_scaled <- as.data.frame(indicadores_norm)
+
+# Índice Simple Promediado (ISP)
+ISP <- i_data_scaled %>%
+  mutate(indice_simple = rowMeans(across(everything()), na.rm = TRUE))
+
+# Índice por Componentes Principales (PCA)
+pca_result <- prcomp(i_data_scaled, center = TRUE, scale. = TRUE)
+var_exp <- summary(pca_result)$importance[2,1]
+indice_pca <- pca_result$x[,1]
+
+# Gráfica de los Indices
+datos$indice_simple <- ISP$indice_simple
+datos$indice_pca <- indice_pca
+
+ggplot(datos) +
+  geom_sf(aes(fill = indice_pca), color = "darkblue", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Índice por Componentes Principales"
+  ) +
+  labs(
+    title = "Índice Compuesto de Bienestar Municipal por Componentes Principales",
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 10, face = "bold", hjust = 0.2),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+A través de esta gráfica podemos observar los múltiples niveles de bienestar entre los municipios de Nuevo León: 
+
+1. **(0.0) - (-2.5)** : Indica los municipios como **Dr. Arroyo**, **Mier y Noriega** o **Galeana**, con el menor bienestar compuesto. Esto vendría ligado a una baja densidad poblacional así como un acceso limitado a los servicios básicos.
+
+2. **(-2.5) - (-5.0)** : Indica los municipios como **Anáhuac**, **China**, **Mina** y en general la mayoría de los municipios superiores, con graduaciones progresivas de bienestar y un acceso intermedio de los servicios básicos. 
+
+3. **(-5.0) - (-7.5)** : Indica los municipios como **Monterrey**, **Guadalupe**, **Apodaca** y **San Pedro Garza García**, con el mayor bienestar compuesto. Esto vendría ligado a su alta densidad y población, cobertura general de los servicios, y una urbanización creciente. 
+
+
+# Ranking Municipal de Nuevo León
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+ranking <- datos %>%
+  st_drop_geometry() %>%
+  select(NOMGEO, indice_simple, indice_pca) %>%
+  arrange(desc(indice_pca))
+
+kable(ranking, digits = 3) %>%
+  kable_styling(full_width = FALSE, position = "center")
+```
+
+Aquí podemos observar de manera más numérica el orden del bienestar compuesto para cada municipio en Nuevo León de la misma manera en que abordamos los índices en la gráfica anterior pero en índice simple e indice pca. 
+
+El primero por su parte pondera todas las variables por igual, reflejando principalmente el acceso a los servicios básicos y la población, beneficiando a los municipios más poblados y urbanizados. 
+
+El segundo índice identifica una dimensión latente diferente entre las variables, reflejando patrones entre ellas y reflejando la calidad de vida y sostenibilidad territorial de cada municipio. 
+
+A través de ambos índices se establece este Ranking en el cual no solo observamos a los municipios con cobertura de servicios básicos general sino también aquellos que perciben una calidad de vida mejor desde la contaminación a la que están expuestos. 
+
+
+# Desigualdad Territorial en Nuevo León
+
+## Coeficiente de Gini
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+gini_internet <- ineq(datos$porcentaje_de_viviendas_particulares_habitadas_que_disponen_de_internet, type = "Gini")
+gini_agua <- ineq(datos$porcentaje_de_viviendas_con_agua_entubada_dentro_de_la_vivienda, type = "Gini")
+gini_energia <- ineq(datos$viviendas_particulares_habitadas_que_disponen_de_energia_electrica, type = "Gini")
+gini_drenaje <- ineq(datos$viviendas_particulares_habitadas_que_disponen_de_drenaje, type = "Gini")
+gini_salud <- ineq(datos$poblacion_derechohabiente_a_servicios_de_salud, type = "Gini")
+gini_pca <- ineq(datos$indice_pca, type = "Gini")
+gini_results <- data.frame(
+  Indicador = c("Internet", "Agua Entubada", "Energía Eléctrica", "Drenaje", "Servicios de Salud", "Índice PCA"),
+  Coeficiente_de_Gini = c(gini_internet, gini_agua, gini_energia, gini_drenaje, gini_salud, gini_pca)
+)
+
+kable(gini_results, digits = 3) %>%
+  kable_styling(full_width = FALSE, position = "center")
+
+```
+
+## Curvas de Lorenz
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+par(mfrow = c(2, 3))
+plot(Lc(datos$porcentaje_de_viviendas_particulares_habitadas_que_disponen_de_internet), main = "Internet", col = "blue")
+plot(Lc(datos$porcentaje_de_viviendas_con_agua_entubada_dentro_de_la_vivienda), main = "Agua Entubada", col = "blue")
+plot(Lc(datos$viviendas_particulares_habitadas_que_disponen_de_energia_electrica), main = "Energía Eléctrica", col = "blue")
+plot(Lc(datos$viviendas_particulares_habitadas_que_disponen_de_drenaje), main = "Drenaje", col = "blue")
+plot(Lc(datos$poblacion_derechohabiente_a_servicios_de_salud), main = "Servicios de Salud", col = "blue")
+plot(Lc(datos$indice_pca), main = "Índice PCA", col = "blue")
+```
+
+Aquí es evidente los niveles de desigualdad en el acceso a los servicios básicos:
+
+**Desigualdad Alta**
+
+- Acceso a Drenaje: 0.772
+
+- Acceso a Energía Eléctrica: 0.768
+
+- Acceso a Servicios de Salud: 0.768
+
+**Desigualdad Moderada**
+
+- Acceso a Internet: 0.290
+
+**Desigualdad Baja**
+
+- Acceso a Agua Entubada: 0.087
+
+
+# Autocorrelación Espacial
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+municipios_vecinos <- poly2nb(datos)
+pesos <- nb2listw(municipios_vecinos, style = "W")
+
+moran_internet <- moran.test(datos$porcentaje_de_viviendas_particulares_habitadas_que_disponen_de_internet, pesos)
+moran_internet
+moran_agua <- moran.test(datos$porcentaje_de_viviendas_con_agua_entubada_dentro_de_la_vivienda, pesos)
+moran_agua
+moran_energia <- moran.test(datos$viviendas_particulares_habitadas_que_disponen_de_energia_electrica, pesos)
+moran_energia
+moran_drenaje <- moran.test(datos$viviendas_particulares_habitadas_que_disponen_de_drenaje, pesos)
+moran_drenaje
+moran_salud <- moran.test(datos$poblacion_derechohabiente_a_servicios_de_salud, pesos)
+moran_salud
+moran_pca <- moran.test(datos$indice_pca, pesos)
+moran_pca
+```
+
+La Autocorrelación Espacial nos refleja que los municipios con alto bienestar están rodeados de otros municipios con alto bienestar y viceversa. Es decir, la ubicación geográfica predice fuertemente el nivel de bienestar de los Municipios de Nuevo León.
+
+
+# Análisis LISA (clusters espaciales)
+
+```{r}
+#| code-fold: true
+#| warning: false
+#| message: false
+
+indicadores_lisa <- c(
+  "porcentaje_de_viviendas_particulares_habitadas_que_disponen_de_internet",
+  "porcentaje_de_viviendas_con_agua_entubada_dentro_de_la_vivienda",
+  "viviendas_particulares_habitadas_que_disponen_de_energia_electrica",
+  "viviendas_particulares_habitadas_que_disponen_de_drenaje",
+  "poblacion_derechohabiente_a_servicios_de_salud",
+  "indice_pca"
+)
+
+for (var in indicadores_lisa) {
+  lisa <- localmoran(datos[[var]], pesos)
+  
+  datos[[paste0(var, "lisa_cluster")]] <- case_when(
+    lisa[,1] > 0 & lisa[,5] <= 0.05 ~ "Alto-Alto",
+    lisa[,1] < 0 & lisa[,5] <= 0.05 ~ "Bajo-Bajo",
+    TRUE ~ "No significativo"
+  )
+}
+```
+
+:::panel-tabset
+
+### Mapa LISA: Porcentaje de Viviendas Particulares Habitadas que Disponen de Internet
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+ggplot(datos) +
+  geom_sf(aes(fill = porcentaje_de_viviendas_particulares_habitadas_que_disponen_de_internetlisa_cluster), color = "black", size = 0.1) +
+  scale_fill_manual(
+    name = "Clúster LISA",
+    values = c("Alto-Alto" = "red", "Bajo-Bajo" = "blue", "No significativo" = "grey")
+  ) +
+  labs(
+    title = "Clústeres LISA de Internet en los Municipios de Nuevo León",
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Mapa LISA: Porcentaje de Viviendas con Agua Entubada dentro de la Vivienda
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+ggplot(datos) +
+  geom_sf(aes(fill = porcentaje_de_viviendas_con_agua_entubada_dentro_de_la_viviendalisa_cluster), color = "black", size = 0.1) +
+  scale_fill_manual(
+    name = "Clúster LISA",
+    values = c("Alto-Alto" = "red", "Bajo-Bajo" = "blue", "No significativo" = "grey")
+  ) +
+  labs(
+    title = "Clústeres LISA de Agua Entubada en los Municipios de Nuevo León",
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Mapa LISA: Viviendas Particulares Habitadas que Disponen de Energía Eléctrica
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+ggplot(datos) +
+  geom_sf(aes(fill = viviendas_particulares_habitadas_que_disponen_de_energia_electricalisa_cluster), color = "black", size = 0.1) +
+  scale_fill_manual(
+    name = "Clúster LISA",
+    values = c("Alto-Alto" = "red", "Bajo-Bajo" = "blue", "No significativo" = "grey")
+  ) +
+  labs(
+    title = "Clústeres LISA de Energía Eléctrica en los Municipios de Nuevo León",
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Mapa LISA: Viviendas Particulares Habitadas que Disponen de Drenaje
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+ggplot(datos) +
+  geom_sf(aes(fill = viviendas_particulares_habitadas_que_disponen_de_drenajelisa_cluster), color = "black", size = 0.1) +
+  scale_fill_manual(
+    name = "Clúster LISA",
+    values = c("Alto-Alto" = "red", "Bajo-Bajo" = "blue", "No significativo" = "grey")
+  ) +
+  labs(
+    title = "Clústeres LISA de Drenaje en los Municipios de Nuevo León",
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.3),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Mapa LISA: Población Derechohabiente a los Servicios de Salud
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+ggplot(datos) +
+  geom_sf(aes(fill = poblacion_derechohabiente_a_servicios_de_saludlisa_cluster), color = "black", size = 0.1) +
+  scale_fill_manual(
+    name = "Clúster LISA",
+    values = c("Alto-Alto" = "red", "Bajo-Bajo" = "blue", "No significativo" = "grey")
+  ) +
+  labs(
+    title = "Clústeres LISA de Acceso a Servicios de Salud en los Municipios de Nuevo León",
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 02),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+## Mapa LISA: Indice de Componentes Principales
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-align: center
+
+ggplot(datos) +
+  geom_sf(aes(fill = indice_pcalisa_cluster), color = "black", size = 0.1) +
+  scale_fill_manual(
+    name = "Clúster LISA",
+    values = c("Alto-Alto" = "red", "Bajo-Bajo" = "blue", "No significativo" = "grey")
+  ) +
+  labs(
+    title = "Clústeres LISA de PCA en los Municipios de Nuevo León",
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.2),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10),
+    legend.position = "right"
+  )
+```
+
+:::
+
+A través de los mapas LISA podemos subrayar que Nuevo León tiene un patrón territorial sistemático y arraigado en la distribución de los servicios básicos pues estas siguen una lógica de agrupamiento geográfico. 
+
+# Conclusión
+
+En definitiva, el análisis confirmó la existencia de importantes disparidades regionales en Nuevo León: la población, las infraestructuras y los servicios básicos se concentran en un pequeño número de municipios, mientras que las zonas rurales mantienen una baja densidad de población y un acceso limitado a los servicios básicos. Aunque el acceso a internet muestra una distribución relativamente uniforme y el agua entubada alcanza una cobertura estatal, aún existe un porcentaje considerable de la población sin acceso a este servicio, lo que subraya brechas persistentes. 
+
+Asimismo, los índices construidos (simple y pca) identificaron las diferencias jerárquicas en el bienestar regional pues ambas destacan la concentración del bienestar en las áreas metropolitanas, lo que contrasta fuertemente con los niveles más bajos observados en municipios del sur y norte de Nuevo León. 
+
+Por otro lado, la autocorrelación espacial refuerza la persistencia de dichos patrones regionales: los municipios con altos niveles de bienestar tienden a agruparse, al igual que los municipios con bajo nivel de bienestar. Esto sugiere que el bienestar en Nuevo León depende en gran medida no solo de las características internas de cada municipio, sino también de su posición geográfica dentro del estado. Al final, estos resultados subrayan la importancia de implementar políticas específicas que tengan en cuenta las estructuras regionales para promover la reducción de las desigualdades y un desarrollo más equilibrado.
+
+
+# Referencias
+
+-   UwUr, C. (s.f.). Qué es un índice compuesto. Scribd. https://es.scribd.com/presentation/658746860/Que-Es-Un-Indice-Compuesto
+-   Indicadores de desigualdad 2010 \| Distrito Federal. (s.f.-b). https://www.coneval.org.mx/coordinacion/entidades/DistritoFederal/Paginas/desigualdad.aspx
+-   Instituto Nacional de Estadística y Geografía. INEGI. (s.f.). Descarga masiva. https://inegi.org.mx/app/descarga/
+-   Inegi. (s.f.). Publicaciones y mapas. https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=794551132173
+-   RPUBS - Análisis de Indicadores Mundiales \[PCA - PCOA - AFCM - Clustering\]. (s.f.). https://rpubs.com/gonzmmartinez/1119491
